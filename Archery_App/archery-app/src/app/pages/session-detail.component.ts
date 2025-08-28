@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { DbService } from '../services/db.service';
+import { DbService } from '../services/db.services';
 import { MetricsService } from '../services/metrics.service';
 import { SessionMeta, Shot } from '../models';
 import { v4 as uuid } from 'uuid';

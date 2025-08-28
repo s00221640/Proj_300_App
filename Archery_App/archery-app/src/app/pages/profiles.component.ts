@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
-import { DbService } from '../services/db.service';
+import { DbService } from '../services/db.services';
 import { ArcherProfile, BowType } from '../models';
 import { v4 as uuid } from 'uuid';
 import { FormsModule } from '@angular/forms';
