@@ -58,24 +58,69 @@ type Mode = 'calibrate-center' | 'calibrate-ring' | 'mark-shots';
 
         <div style="border:1px solid #eee;border-radius:8px;padding:10px">
           <div style="font-weight:600;margin-bottom:6px">Shots ({{shots().length}})</div>
-          <ul style="list-style:none;padding:0;margin:0;max-height:240px;overflow:auto">
-            <li *ngFor="let sh of shots(); let i = index" style="border-bottom:1px solid #f0f0f0;padding:6px 0">
-              #{{sh.order ?? i+1}} • ({{sh.x|number:'1.0-0'}}, {{sh.y|number:'1.0-0'}}) • <strong>{{sh.score ?? '—'}}</strong>
-            </li>
-          </ul>
+          <ng-container *ngFor="let end of endIndices()">
+            <details [open]="end === currentEnd()">
+              <summary>
+                End {{end + 1}}
+                <span style="margin-left:8px;color:#888">
+                  Total: {{endTotal(end)}} • Avg: {{endAvg(end) | number:'1.1-1'}}
+                </span>
+                <button (click)="clearEnd(end); $event.stopPropagation()">Clear end</button>
+                <button (click)="deleteEnd(end); $event.stopPropagation()">Delete end</button>
+              </summary>
+              <ul style="list-style:none;padding:0;margin:0;max-height:240px;overflow:auto">
+                <li *ngFor="let sh of shotsForEnd(end); let i = index" style="border-bottom:1px solid #f0f0f0;padding:6px 0">
+                  #{{sh.order ?? i+1}} • ({{sh.x|number:'1.0-0'}}, {{sh.y|number:'1.0-0'}}) • <strong>{{sh.score ?? '—'}}</strong>
+                  <button (click)="deleteShot(sh.id)">🗑</button>
+                  <button (click)="moveShot(sh.id, -1)" [disabled]="(sh.endIndex ?? 0) === 0">◀</button>
+                  <button (click)="moveShot(sh.id, 1)" [disabled]="(sh.endIndex ?? 0) === maxEndIndex()">▶</button>
+                </li>
+              </ul>
+            </details>
+          </ng-container>
         </div>
 
         <div style="border:1px solid #eee;border-radius:8px;padding:10px">
-          <div style="font-weight:600;margin-bottom:6px">Metrics</div>
-          <ng-container *ngIf="metrics(); else noM">
-            <div>Mean radial error: {{metrics()?.meanRadialError | number:'1.0-1'}} px</div>
-            <div>Group size (R95 proxy): {{metrics()?.groupSizeR95 | number:'1.0-1'}} px</div>
-            <div>Bias distance: {{metrics()?.biasDistance | number:'1.0-1'}} px</div>
-            <div>Bias angle: {{metrics()?.biasAngleDeg | number:'1.0-1'}}°</div>
+          <div style="font-weight:600;margin-bottom:6px">
+            Metrics
+            <button (click)="metricsTab.set('end')" [disabled]="metricsTab() === 'end'">Current End</button>
+            <button (click)="metricsTab.set('session')" [disabled]="metricsTab() === 'session'">Session</button>
+          </div>
+          <ng-container *ngIf="metricsTab() === 'end'">
+            <ng-container *ngIf="endMetrics(); else noM">
+              <div>Mean radial error: {{endMetrics()?.meanRadialError | number:'1.0-1'}} px</div>
+              <div>Group size (R95 proxy): {{endMetrics()?.groupSizeR95 | number:'1.0-1'}} px</div>
+              <div>Bias distance: {{endMetrics()?.biasDistance | number:'1.0-1'}} px</div>
+              <div>Bias angle: {{endMetrics()?.biasAngleDeg | number:'1.0-1'}}°</div>
+            </ng-container>
+            <ng-template #noM>Calibrate and add shots to compute.</ng-template>
           </ng-container>
-          <ng-template #noM>Calibrate and add shots to compute.</ng-template>
+          <ng-container *ngIf="metricsTab() === 'session'">
+            <ng-container *ngIf="metrics(); else noM">
+              <div>Mean radial error: {{metrics()?.meanRadialError | number:'1.0-1'}} px</div>
+              <div>Group size (R95 proxy): {{metrics()?.groupSizeR95 | number:'1.0-1'}} px</div>
+              <div>Bias distance: {{metrics()?.biasDistance | number:'1.0-1'}} px</div>
+              <div>Bias angle: {{metrics()?.biasAngleDeg | number:'1.0-1'}}°</div>
+            </ng-container>
+            <ng-template #noM>Calibrate and add shots to compute.</ng-template>
+          </ng-container>
         </div>
       </aside>
+    </div>
+
+    <div style="margin-top:12px">
+      <button (click)="newEnd()">New End</button>
+      <button (click)="prevEnd()" [disabled]="currentEnd() === 0">Prev</button>
+      <button (click)="nextEnd()" [disabled]="!hasNextEnd()">Next</button>
+      <label>
+        End size:
+        <select [(ngModel)]="arrowsPerEndValue" (change)="setArrowsPerEnd()">
+          <option [ngValue]="3">3</option>
+          <option [ngValue]="6">6</option>
+          <option [ngValue]="customArrowsPerEnd">Custom</option>
+        </select>
+        <input *ngIf="arrowsPerEndValue === customArrowsPerEnd" type="number" min="1" [(ngModel)]="customArrowsPerEnd" (change)="setArrowsPerEnd()">
+      </label>
     </div>
   </section>
   `
@@ -95,9 +140,17 @@ export class SessionDetailComponent {
 
   cal = signal<{ centerX?: number; centerY?: number; ringRadiusPx?: number }>({});
 
+  currentEnd = signal<number>(0);
+arrowsPerEnd = signal<number>(6);
+
   private img: HTMLImageElement | undefined;
   private scale = 1;
   private imgData?: ImageData; // for auto-snap
+
+  arrowsPerEndValue = 6;
+customArrowsPerEnd = 6;
+
+  metricsTab = signal<'end' | 'session'>('end');
 
   async ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
@@ -105,6 +158,9 @@ export class SessionDetailComponent {
 
     const s = await this.db.getSession(id);
     this.session.set(s || undefined);
+
+    // Add this:
+    this.arrowsPerEnd.set(s?.arrowsPerEnd ?? 6);
 
     if (s?.photoPath) await this.loadImage(s.photoPath);
 
@@ -205,11 +261,25 @@ export class SessionDetailComponent {
     if (m === 'mark-shots' && this.isCalibrated()) {
       const now = Date.now();
       const score = this.scoreFor(x, y);
-      const shot: Shot = { id: uuid(), sessionId: s.id, x, y, order: this.shots().length + 1, score, createdAt: now };
+      const shot: Shot = { 
+        id: uuid(), 
+        sessionId: s.id, 
+        x, y, 
+        order: this.shots().length + 1, 
+        score, 
+        createdAt: now,
+        endIndex: this.currentEnd() // <-- add this
+      };
       await this.db.addShot(shot);
       this.shots.set(await this.db.listShotsBySession(s.id));
       this.recompute();
       this.draw();
+
+      // Auto-advance (optional)
+      const endShots = this.shots().filter(sh => sh.endIndex === this.currentEnd());
+      if (this.arrowsPerEnd() && endShots.length >= this.arrowsPerEnd()) {
+        if (confirm('End complete. Start new end?')) this.newEnd();
+      }
     }
   }
 
@@ -372,7 +442,7 @@ export class SessionDetailComponent {
     if (!s) return;
     const shots = await this.db.listShotsBySession(s.id);
     const metrics = await this.db.getMetrics?.(s.id);
-    const payload = { session: s, shots, metrics };
+    const payload = { session: { ...s, arrowsPerEnd: this.arrowsPerEnd() }, shots, metrics };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -400,6 +470,7 @@ export class SessionDetailComponent {
     if (data.metrics) await this.db.upsertMetrics?.({ ...data.metrics, sessionId: s.id, computedAt: Date.now() });
 
     this.session.set(await this.db.getSession(s.id) || undefined);
+    this.arrowsPerEnd.set(s.arrowsPerEnd ?? 6);
     await this.refreshShots();
     this.recompute();
     this.draw();
@@ -412,9 +483,102 @@ export class SessionDetailComponent {
     window.removeEventListener('keydown', this.keyHandler);
   }
   keyHandler = (e: KeyboardEvent) => {
-    if (e.key.toLowerCase() === 'z') this.undo();
-    if (e.key.toLowerCase() === 'c') this.clearShots();
+    if (e.key.toLowerCase() === 'z') this.undoCurrentEnd();
+    if (e.key.toLowerCase() === 'n') this.newEnd();
+    if (e.key === '[') this.prevEnd();
+    if (e.key === ']') this.nextEnd();
   };
+
+  undoCurrentEnd() {
+    const arr = this.shots();
+    const idx = arr.map(s => (s.endIndex ?? 0)).lastIndexOf(this.currentEnd());
+    if (idx >= 0) {
+      arr.splice(idx, 1);
+      this.shots.set([...arr]);
+      this.persistShotsReplace(this.shots());
+      this.recompute();
+      this.draw();
+    }
+  }
+
+  newEnd() { this.currentEnd.set(this.maxEndIndex() + 1); }
+prevEnd() { if (this.currentEnd() > 0) this.currentEnd.set(this.currentEnd() - 1); }
+nextEnd() { if (this.currentEnd() < this.maxEndIndex()) this.currentEnd.set(this.currentEnd() + 1); }
+hasNextEnd() { return this.currentEnd() < this.maxEndIndex(); }
+maxEndIndex() { return Math.max(0, ...this.shots().map(sh => sh.endIndex ?? 0)); }
+
+setArrowsPerEnd() {
+  const val = this.arrowsPerEndValue === this.customArrowsPerEnd ? this.customArrowsPerEnd : this.arrowsPerEndValue;
+  this.arrowsPerEnd.set(val);
+  const s = this.session();
+  if (s) {
+    s.arrowsPerEnd = val;
+    this.db.upsertSession(s);
+    this.session.set(s);
+  }
+}
+
+endIndices() {
+  const ends = new Set<number>();
+  for (const sh of this.shots()) ends.add(sh.endIndex ?? 0);
+  return Array.from(ends).sort((a, b) => a - b);
+}
+endTotal(end: number) {
+  return this.shots().filter(s => (s.endIndex ?? 0) === end).reduce((sum, s) => sum + (s.score ?? 0), 0);
+}
+endAvg(end: number) {
+  const arr = this.shots().filter(s => (s.endIndex ?? 0) === end);
+  return arr.length ? this.endTotal(end) / arr.length : 0;
+}
+clearEnd(end: number) {
+  const keep = this.shots().filter(s => (s.endIndex ?? 0) !== end);
+  this.shots.set(keep);
+  this.persistShotsReplace(keep);
+  this.recompute();
+  this.draw();
+}
+deleteEnd(end: number) {
+  const keep = this.shots().filter(s => (s.endIndex ?? 0) !== end);
+  // Decrement endIndex for shots in higher ends
+  for (const sh of keep) {
+    if ((sh.endIndex ?? 0) > end) sh.endIndex = (sh.endIndex ?? 0) - 1;
+  }
+  this.shots.set(keep);
+  this.persistShotsReplace(keep);
+  this.recompute();
+  this.draw();
+}
+deleteShot(id: string) {
+  const keep = this.shots().filter(s => s.id !== id);
+  this.shots.set(keep);
+  this.persistShotsReplace(keep);
+  this.recompute();
+  this.draw();
+}
+moveShot(id: string, dir: number) {
+  const arr = this.shots();
+  const idx = arr.findIndex(s => s.id === id);
+  if (idx < 0) return;
+  const sh = arr[idx];
+  sh.endIndex = Math.max(0, Math.min(this.maxEndIndex(), (sh.endIndex ?? 0) + dir));
+  this.shots.set([...arr]);
+  this.persistShotsReplace(this.shots());
+  this.recompute();
+  this.draw();
+}
+
+  // Add this method to provide end metrics for the current end
+  endMetrics() {
+    const s = this.session();
+    if (!s) return undefined;
+    const shots = this.shots().filter(sh => (sh.endIndex ?? 0) === this.currentEnd());
+    if (!shots.length) return undefined;
+    return this.metricsSvc.compute(s.id, shots, s.calibration);
+  }
+
+  shotsForEnd(end: number) {
+    return this.shots().filter(s => (s.endIndex ?? 0) === end);
+  }
 }
 
 // ------------ helpers ------------
