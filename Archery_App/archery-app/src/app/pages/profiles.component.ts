@@ -5,6 +5,7 @@ import { DbService } from '../services/db.services';
 import { ArcherProfile, BowType } from '../models';
 import { v4 as uuid } from 'uuid';
 import { FormsModule } from '@angular/forms';
+import { StatsService } from '../services/stats.service';
 
 @Component({
   selector: 'app-profiles',
@@ -26,7 +27,11 @@ import { FormsModule } from '@angular/forms';
       <li *ngFor="let p of profiles()" style="display:flex;justify-content:space-between;align-items:center;border:1px solid #eee;border-radius:8px;padding:10px;margin:8px 0">
         <div>
           <div style="font-weight:600">{{p.name}}</div>
-          <div style="font-size:12px;color:#666">{{p.bowType || '—'}}</div>
+          <div style="font-size:12px;color:#666">
+            Sessions: {{stats()[p.id]?.sessions || 0}} •
+            Shots: {{stats()[p.id]?.shots || 0}} •
+            Avg: {{(stats()[p.id]?.avgScore || 0) | number:'1.1-1'}}
+          </div>
         </div>
         <div style="display:flex;gap:8px">
           <a [routerLink]="['/sessions', p.id]">Sessions</a>
@@ -40,14 +45,22 @@ import { FormsModule } from '@angular/forms';
 export class ProfilesComponent {
   private db = inject(DbService);
   private router = inject(Router);
+  private statsSvc = inject(StatsService);
 
   profiles = signal<ArcherProfile[]>([]);
   name = '';
   bowType?: BowType;
   bowTypes: BowType[] = ['recurve','compound','barebow','longbow'];
+  stats = signal<Record<string, {sessions:number, shots:number, avgScore:number}>>({});
 
   async ngOnInit() {
-    this.profiles.set(await this.db.listProfiles());
+    const list = await this.db.listProfiles();
+    this.profiles.set(list);
+    const map: Record<string, any> = {};
+    for (const p of list) {
+      map[p.id] = await this.statsSvc.archerStats(p.id);
+    }
+    this.stats.set(map);
   }
 
   async create(e: Event) {
