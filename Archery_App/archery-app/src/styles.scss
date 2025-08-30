@@ -1,1 +1,66 @@
-/* You can add global styles to this file, and also import other style files */
+@use '@angular/material' as mat;
+
+/* Use M2 helpers + M2 palettes */
+$archery-primary: mat.m2-define-palette(mat.$m2-blue-palette, 500);
+$archery-accent:  mat.m2-define-palette(mat.$m2-red-palette, 500);
+$archery-warn:    mat.m2-define-palette(mat.$m2-red-palette);
+
+$archery-dark-theme: mat.m2-define-dark-theme((
+  color: (
+    primary: $archery-primary,
+    accent:  $archery-accent,
+    warn:    $archery-warn,
+  )
+));
+
+@include mat.all-component-themes($archery-dark-theme);
+
+/* Base app styles */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: #111;
+  color: #eee;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+}
+:root {
+  --bg: #0e1117;        /* page */
+  --surface: #1c2333;   /* cards (lightened) */
+  --surface-2: #252e44; /* inputs */
+  --text: #f1f5ff;      /* main text (brighter) */
+  --muted: #b7c0d1;     /* secondary (brighter) */
+  --accent: #46a6ff;
+  --border: #323d55;
+  --elev: 0 8px 24px rgba(0,0,0,.35); /* stronger shadow */
+}
+
+body { background: var(--bg); color: var(--text); }
+
+.container { max-width: 1040px; margin: 0 auto; padding: 20px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--elev);
+  padding: 14px;
+}
+
+button, .btn {
+  background: var(--accent);
+  color: #081019;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+
+input, select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+a { color: var(--accent); }
+hr { border-color: var(--border); }

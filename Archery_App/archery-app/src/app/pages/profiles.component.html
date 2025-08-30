@@ -1,1 +1,30 @@
-<p>profiles works!</p>
+in src/app/pages/profiles.component.html (or within the inline template), wrap the form + list in a card and bump title contrast:
+
+<section class="card">
+  <h2 style="margin:0 0 10px 0;">Archer Profiles</h2>
+
+  <form (submit)="create($event)" style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 16px;">
+    <input placeholder="Name" [(ngModel)]="name" name="name" required>
+    <select [(ngModel)]="bowType" name="bowType">
+      <option [ngValue]="undefined">Bow Type</option>
+      <option *ngFor="let b of bowTypes" [ngValue]="b">{{b}}</option>
+    </select>
+    <button type="submit" class="btn">Add</button>
+  </form>
+
+  <ul style="list-style:none; padding:0; margin:0; display:grid; gap:10px;">
+    <li *ngFor="let p of profiles()" class="card" style="display:flex; justify-content:space-between; align-items:center; padding:12px;">
+      <div>
+        <div style="font-weight:700">{{p.name}}</div>
+        <div style="font-size:12px; color: var(--muted)">{{p.bowType || '—'}}</div>
+        <div *ngIf="stats()[p.id] as s" style="font-size:12px; color: var(--muted); margin-top:4px;">
+          Sessions: {{s.sessions}} • Shots: {{s.shots}} • Avg: {{s.avgScore | number:'1.1-1'}}
+        </div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <a [routerLink]="['/sessions', p.id]" class="btn" style="text-decoration:none; display:inline-block;">Sessions</a>
+        <button (click)="remove(p.id)" class="btn" style="background:#f44336; color:white;">Delete</button>
+      </div>
+    </li>
+  </ul>
+</section>

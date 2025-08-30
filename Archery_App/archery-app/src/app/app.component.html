@@ -1,4 +1,9 @@
-<nav style="display:flex;gap:12px;padding:12px;border-bottom:1px solid #eee">
-  <a routerLink="/profiles">Profiles</a>
-</nav>
-<router-outlet></router-outlet>
+<header style="border-bottom:1px solid var(--border); padding:12px 0;">
+  <div class="container" style="display:flex;align-items:center;gap:10px;">
+    <div style="font-weight:800; letter-spacing:.3px;">🏹 Archery</div>
+  </div>
+</header>
+
+<main class="container" style="padding-top:20px;">
+  <router-outlet></router-outlet>
+</main>
