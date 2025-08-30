@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { DbService } from '../services/db.services';
 import { MetricsService } from '../services/metrics.service';
-import { Metrics, SessionMeta, Shot } from '../models';
+import { Metrics, SessionMeta, Shot, Calibration } from '../models'; // <-- add Calibration here
 import { v4 as uuid } from 'uuid';
 
 type Mode = 'calibrate-center' | 'calibrate-ring' | 'mark-shots';
@@ -52,8 +52,8 @@ type Mode = 'calibrate-center' | 'calibrate-ring' | 'mark-shots';
       <aside style="display:grid;gap:12px;align-content:start">
         <div style="border:1px solid #eee;border-radius:8px;padding:10px">
           <div style="font-weight:600;margin-bottom:6px">Calibration</div>
-          <div>Centre: {{cal().centerX ?? '—'}}, {{cal().centerY ?? '—'}}</div>
-          <div>Ring radius (px): {{cal().ringRadiusPx ?? '—'}}</div>
+          <div>Centre: {{getCalForActiveArcher()?.centerX ?? '—'}}, {{getCalForActiveArcher()?.centerY ?? '—'}}</div>
+          <div>Ring radius (px): {{getCalForActiveArcher()?.ringRadiusPx ?? '—'}}</div>
         </div>
 
         <div style="border:1px solid #eee;border-radius:8px;padding:10px">
@@ -122,6 +122,20 @@ type Mode = 'calibrate-center' | 'calibrate-ring' | 'mark-shots';
         <input *ngIf="arrowsPerEndValue === customArrowsPerEnd" type="number" min="1" [(ngModel)]="customArrowsPerEnd" (change)="setArrowsPerEnd()">
       </label>
     </div>
+
+    <div *ngIf="participants.length > 1" style="margin: 8px 0 16px 0; display: flex; gap: 8px;">
+      <span *ngFor="let p of participants"
+            (click)="activeArcherId.set(p.archerId)"
+            [style.background]="activeArcherId() === p.archerId ? 'var(--accent)' : '#222'"
+            [style.color]="activeArcherId() === p.archerId ? '#111' : '#fff'"
+            style="padding: 4px 14px; border-radius: 999px; cursor: pointer; font-weight: 600; font-size: 14px;">
+        {{p.displayName}}
+      </span>
+    </div>
+
+    <div *ngIf="!getCalForActiveArcher()?.centerX || !getCalForActiveArcher()?.ringRadiusPx" style="color:#e91e63;font-weight:600;">
+      Please calibrate centre and ring for this archer.
+    </div>
   </section>
   `
 })
@@ -138,7 +152,7 @@ export class SessionDetailComponent {
 
   mode = signal<Mode>('calibrate-center');
 
-  cal = signal<{ centerX?: number; centerY?: number; ringRadiusPx?: number }>({});
+  cal = signal<Partial<Calibration>>({}); // <-- ensure this line is exactly
 
   currentEnd = signal<number>(0);
 arrowsPerEnd = signal<number>(6);
@@ -152,6 +166,15 @@ customArrowsPerEnd = 6;
 
   metricsTab = signal<'end' | 'session'>('end');
 
+  activeArcherId = signal<string | undefined>(undefined);
+
+  get participants() {
+    return this.session()?.participants ?? [];
+  }
+  get activeArcher() {
+    return this.participants.find(p => p.archerId === this.activeArcherId());
+  }
+
   async ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
@@ -159,10 +182,15 @@ customArrowsPerEnd = 6;
     const s = await this.db.getSession(id);
     this.session.set(s || undefined);
 
+    // Set default active archer
+    if (s) {
+      this.activeArcherId.set(s.ownerArcherId || s.participants?.[0]?.archerId);
+    }
+
     // Add this:
     this.arrowsPerEnd.set(s?.arrowsPerEnd ?? 6);
 
-    if (s?.photoPath) await this.loadImage(s.photoPath);
+    if (s?.photoPath) await this.loadAndPrepareImage(s.photoPath); // was this.loadImage
 
     if (s?.calibration) {
       this.cal.set({ ...s.calibration });
@@ -180,7 +208,7 @@ customArrowsPerEnd = 6;
     const file = (ev.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
-    const dataUrl = await fileToDataURL(file);
+    const dataUrl = await this.fileToDataURL(file); // <-- FIXED: use method version
     const s = this.session();
     if (!s) return;
 
@@ -189,36 +217,43 @@ customArrowsPerEnd = 6;
     await this.db.upsertSession(s);
     this.session.set(s);
 
-    await this.loadImage(dataUrl);
+    await this.loadAndPrepareImage(dataUrl); // was this.loadImage
     this.mode.set('calibrate-center');
     this.cal.set({});
     this.draw();
   }
 
-  private async loadImage(dataUrl: string) {
-    this.img = await loadImage(dataUrl);
+  private async loadAndPrepareImage(dataUrl: string) {
+    const img = await this.createImage(dataUrl);
+    this.img = img;
     const canvas = this.cnvRef.nativeElement;
     const maxW = 900;
-    const scale = this.img.width > maxW ? maxW / this.img.width : 1;
+    const scale = img.width > maxW ? maxW / img.width : 1;
     this.scale = scale;
-    canvas.width  = Math.round(this.img.width * scale);
-    canvas.height = Math.round(this.img.height * scale);
-
-    // prepare pixel data for auto-snap (source-space)
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
     const off = document.createElement('canvas');
-    off.width = this.img.width;
-    off.height = this.img.height;
+    off.width = img.width;
+    off.height = img.height;
     const octx = off.getContext('2d')!;
-    octx.drawImage(this.img, 0, 0);
+    octx.drawImage(img, 0, 0);
     this.imgData = octx.getImageData(0, 0, off.width, off.height);
-
     this.draw();
+  }
+
+  private createImage(dataUrl: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
   }
 
   // ---------- Modes ----------
   setMode(m: Mode) { this.mode.set(m); }
-  hasCenter() { return this.cal().centerX != null && this.cal().centerY != null; }
-  hasRing() { return this.cal().ringRadiusPx != null && (this.cal().ringRadiusPx as number) > 0; }
+hasCenter() { return this.cal().centerX != null && this.cal().centerY != null; }
+hasRing()   { return (this.cal().ringRadiusPx ?? 0) > 0; }
   isCalibrated() { return this.hasCenter() && this.hasRing(); }
 
   // ---------- Canvas interaction ----------
@@ -235,7 +270,6 @@ customArrowsPerEnd = 6;
 
     if (m === 'calibrate-center') {
       this.cal.set({ ...this.cal(), centerX: x, centerY: y });
-      // if we already had a ring, keep it; else move to ring step
       if (!this.cal().ringRadiusPx) this.mode.set('calibrate-ring');
       await this.autoSaveIfReady();
       this.draw();
@@ -247,11 +281,8 @@ customArrowsPerEnd = 6;
       const cx = this.cal().centerX!;
       const cy = this.cal().centerY!;
       const approx = Math.hypot(x - cx, y - cy);
-
-      // Auto-snap to nearest ring edge using pixel gradients
       const snapped = this.snapRadiusToEdge(cx, cy, x, y, approx);
       this.cal.set({ ...this.cal(), ringRadiusPx: Math.max(1, snapped ?? approx) });
-
       await this.autoSaveIfReady();
       this.mode.set('mark-shots');
       this.draw();
@@ -268,7 +299,8 @@ customArrowsPerEnd = 6;
         order: this.shots().length + 1, 
         score, 
         createdAt: now,
-        endIndex: this.currentEnd() // <-- add this
+        endIndex: this.currentEnd(),
+        archerId: this.activeArcherId()
       };
       await this.db.addShot(shot);
       this.shots.set(await this.db.listShotsBySession(s.id));
@@ -276,7 +308,7 @@ customArrowsPerEnd = 6;
       this.draw();
 
       // Auto-advance (optional)
-      const endShots = this.shots().filter(sh => sh.endIndex === this.currentEnd());
+      const endShots = this.shotsForEnd(this.currentEnd()); // <-- use only active archer's shots in this end
       if (this.arrowsPerEnd() && endShots.length >= this.arrowsPerEnd()) {
         if (confirm('End complete. Start new end?')) this.newEnd();
       }
@@ -287,11 +319,15 @@ customArrowsPerEnd = 6;
     if (!this.isCalibrated()) return;
     const s = this.session();
     if (!s) return;
-    s.calibration = {
-      centerX: this.cal().centerX!,
-      centerY: this.cal().centerY!,
-      ringRadiusPx: this.cal().ringRadiusPx!
-    };
+    if (!s.calibrations) s.calibrations = {};
+    const aid = this.activeArcherId();
+    if (aid) {
+      s.calibrations[aid] = {
+        centerX: this.cal().centerX!,
+        centerY: this.cal().centerY!,
+        ringRadiusPx: this.cal().ringRadiusPx!
+      };
+    }
     s.updatedAt = Date.now();
     await this.db.upsertSession(s);
     this.session.set(s);
@@ -324,9 +360,9 @@ customArrowsPerEnd = 6;
 
   // ---------- Scoring ----------
   private scoreFor(x: number, y: number): number | undefined {
-    const s = this.session();
-    if (!s?.calibration) return undefined;
-    const { centerX, centerY, ringRadiusPx } = s.calibration;
+    const cal = this.getCalForActiveArcher();
+    if (!cal) return undefined;
+    const { centerX, centerY, ringRadiusPx } = cal;
     const dist = Math.hypot(x - centerX, y - centerY);
     const band = Math.floor(dist / Math.max(1, ringRadiusPx));
     return Math.max(0, 10 - band);
@@ -342,7 +378,13 @@ customArrowsPerEnd = 6;
   async recompute() {
     const s = this.session();
     if (!s) return;
-    const m = this.metricsSvc.compute(s.id, this.shots(), s.calibration);
+    const cal = this.getCalForActiveArcher();
+    const shots = this.shotsForActiveArcher();
+    if (!cal || shots.length === 0) {
+      this.metrics.set(undefined);
+      return;
+    }
+    const m = this.metricsSvc.compute(s.id, shots, cal);
     await this.db.upsertMetrics(m);
     this.metrics.set(m);
   }
@@ -399,23 +441,30 @@ customArrowsPerEnd = 6;
   private snapRadiusToEdge(cx: number, cy: number, x: number, y: number, approxR: number): number | undefined {
     if (!this.imgData || !this.img || approxR <= 0) return undefined;
 
-    // convert canvas coords (x,y) & center to image source space
     const sx = x / this.scale;
     const sy = y / this.scale;
     const scx = cx / this.scale;
     const scy = cy / this.scale;
 
-    const theta = Math.atan2(sy - scy, sx - scx);
-    const search = 20; // px either side
-    let bestR = approxR, bestG = 0;
+    const baseTheta = Math.atan2(sy - scy, sx - scx);
+    const angles = [0, Math.PI / 6, -Math.PI / 6, Math.PI / 3, -Math.PI / 3]; // sample 5 directions
+    const radii: number[] = [];
 
-    for (let dr = -search; dr <= search; dr++) {
-      const r = approxR + dr;
-      if (r <= 2) continue;
-      const g = Math.abs(this.radialGradient(scx, scy, theta, r)); // edge strength
-      if (g > bestG) { bestG = g; bestR = r; }
+    for (const dTheta of angles) {
+      const theta = baseTheta + dTheta;
+      let bestR = approxR, bestG = 0;
+      for (let dr = -15; dr <= 15; dr++) {
+        const r = approxR + dr;
+        if (r <= 2) continue;
+        const g = Math.abs(this.radialGradient(scx, scy, theta, r));
+        if (g > bestG) { bestG = g; bestR = r; }
+      }
+      radii.push(bestR);
     }
-    return bestR;
+
+    // Return the median radius for robustness
+    radii.sort((a, b) => a - b);
+    return radii[Math.floor(radii.length / 2)];
   }
 
   private radialGradient(cx: number, cy: number, theta: number, r: number): number {
@@ -518,18 +567,25 @@ setArrowsPerEnd() {
   }
 }
 
+shotsForActiveArcher() {
+  return this.shots().filter(s => s.archerId === this.activeArcherId());
+}
+shotsForEnd(end: number) {
+  return this.shotsForActiveArcher().filter(s => (s.endIndex ?? 0) === end);
+}
 endIndices() {
   const ends = new Set<number>();
-  for (const sh of this.shots()) ends.add(sh.endIndex ?? 0);
+  for (const sh of this.shotsForActiveArcher()) ends.add(sh.endIndex ?? 0);
   return Array.from(ends).sort((a, b) => a - b);
 }
 endTotal(end: number) {
-  return this.shots().filter(s => (s.endIndex ?? 0) === end).reduce((sum, s) => sum + (s.score ?? 0), 0);
+  return this.shotsForEnd(end).reduce((sum, s) => sum + (s.score ?? 0), 0);
 }
 endAvg(end: number) {
-  const arr = this.shots().filter(s => (s.endIndex ?? 0) === end);
+  const arr = this.shotsForEnd(end);
   return arr.length ? this.endTotal(end) / arr.length : 0;
 }
+
 clearEnd(end: number) {
   const keep = this.shots().filter(s => (s.endIndex ?? 0) !== end);
   this.shots.set(keep);
@@ -571,30 +627,25 @@ moveShot(id: string, dir: number) {
   endMetrics() {
     const s = this.session();
     if (!s) return undefined;
-    const shots = this.shots().filter(sh => (sh.endIndex ?? 0) === this.currentEnd());
-    if (!shots.length) return undefined;
-    return this.metricsSvc.compute(s.id, shots, s.calibration);
+    const shots = this.shotsForEnd(this.currentEnd());
+    const cal = this.getCalForActiveArcher();
+    if (!shots.length || !cal) return undefined;
+    return this.metricsSvc.compute(s.id, shots, cal);
   }
 
-  shotsForEnd(end: number) {
-    return this.shots().filter(s => (s.endIndex ?? 0) === end);
-  }
+
+getCalForActiveArcher(): Calibration | undefined {
+  const s = this.session();
+  const aid = this.activeArcherId();
+  return (s?.calibrations && aid && s.calibrations[aid]) || s?.calibration;
 }
 
-// ------------ helpers ------------
-function loadImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-}
-function fileToDataURL(file: File): Promise<string> {
+private fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
     r.onerror = reject;
     r.readAsDataURL(file);
   });
+}
 }

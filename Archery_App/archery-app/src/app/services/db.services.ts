@@ -79,6 +79,20 @@ export class DbService {
     const db = await this.db;
     return db.getAllFromIndex('shots', 'by-session', sessionId);
   }
+  async listShotsBySessionAndArcher(sessionId: string, archerId: string, session?: SessionMeta) {
+    const db = await this.db;
+    const all = await db.getAllFromIndex('shots', 'by-session', sessionId);
+    return all.filter(sh => {
+      if (sh.archerId) return sh.archerId === archerId;
+      // fallback: treat as owner or first participant
+      if (session) {
+        if (session.ownerArcherId && archerId === session.ownerArcherId) return true;
+        if (session.participants?.length && archerId === session.participants[0].archerId) return true;
+        return false;
+      }
+      return true; // fallback: include if archerId missing and no session info
+    });
+  }
 
   async upsertMetrics(m: Metrics) {
     const db = await this.db;

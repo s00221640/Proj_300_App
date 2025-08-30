@@ -17,7 +17,7 @@ export interface Calibration {
 
 export interface SessionMeta {
   id: string;
-  archerId: string;
+  archerId: string; // legacy, keep for back-compat
   dateIso: string;
   roundName?: string;
   distanceMeters?: number;
@@ -30,7 +30,12 @@ export interface SessionMeta {
     centerY: number;
     ringRadiusPx: number;
   };
-  arrowsPerEnd?: number; // <-- add this
+  arrowsPerEnd?: number;
+
+  // New fields for multi-archer support:
+  ownerArcherId?: string;
+  participants: { archerId: string; displayName: string; }[];
+  calibrations?: Record<string, Calibration>;
 }
 
 export interface Shot {
@@ -41,7 +46,8 @@ export interface Shot {
   order?: number;
   score?: number;
   createdAt: number;
-  endIndex?: number; // <-- add this
+  endIndex?: number;
+  archerId?: string; // <-- new, optional for back-compat
 }
 
 export interface Metrics {
