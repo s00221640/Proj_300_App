@@ -408,12 +408,8 @@ hasRing()   { return (this.cal().ringRadiusPx ?? 0) > 0; }
       ctx.fill();
     }
     if (this.isCalibrated()) {
-      ctx.beginPath();
-      ctx.arc(c.centerX!, c.centerY!, c.ringRadiusPx!, 0, Math.PI * 2);
-      ctx.strokeStyle = '#00aaff';
-      ctx.setLineDash([6, 4]);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      // draw all calculated rings
+      this.drawRings(ctx, c.centerX!, c.centerY!, c.ringRadiusPx!);
     }
 
     for (const sh of this.shots()) {
@@ -435,6 +431,35 @@ hasRing()   { return (this.cal().ringRadiusPx ?? 0) > 0; }
       this.mode() === 'calibrate-ring'   ? 'Click near a ring edge — I will auto-snap' :
       'Click to add shots';
     ctx.fillText(hint, 8, 18);
+  }
+
+  /** Draws 10 → 1 rings using the calibrated ring width */
+  private drawRings(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    ringRadiusPx: number
+  ) {
+    // styles
+    const major = '#3ea3ff';        // accent
+    const minor = 'rgba(62,163,255,.35)';
+
+    // Outer to inner for nicer layering
+    for (let k = 10; k >= 1; k--) {
+      const r = k * ringRadiusPx;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+
+      // Make 10/8/6/4/2 a bit stronger for visual hierarchy
+      const isMajor = k % 2 === 0;
+      ctx.lineWidth = isMajor ? 1.5 : 1;
+      ctx.setLineDash(isMajor ? [6, 4] : [3, 4]);
+      ctx.strokeStyle = isMajor ? major : minor;
+      ctx.stroke();
+    }
+
+    // reset dash
+    ctx.setLineDash([]);
   }
 
   // ---------- Auto-snap helper ----------
