@@ -18,15 +18,58 @@ import { StatsService } from '../services/stats.service';
       <input placeholder="Name" [(ngModel)]="name" name="name" required>
       <select [(ngModel)]="bowType" name="bowType">
         <option [ngValue]="undefined">Bow Type</option>
-        <option *ngFor="let b of bowTypes" [ngValue]="b">{{b}}</option>
+        <option [ngValue]="'recurve'">🏹 Recurve</option>
+        <option [ngValue]="'compound'">⚙️ Compound</option>
+        <option [ngValue]="'barebow'">🎯 Barebow</option>
+        <option [ngValue]="'longbow'">🏰 Longbow</option>
+      </select>
+      <select [(ngModel)]="handedness" name="handedness">
+        <option [ngValue]="undefined">Handedness</option>
+        <option value="right">🖐️ Right</option>
+        <option value="left">🤚 Left</option>
+        <option value="ambi">🤲 Ambi</option>
+      </select>
+      <select [(ngModel)]="eyeDominance" name="eyeDominance">
+        <option [ngValue]="undefined">Eye Dominance</option>
+        <option value="right">👁️‍🗨️ Right</option>
+        <option value="left">👁️ Left</option>
+        <option value="binocular">👁️‍🗨️👁️ Binocular</option>
+        <option value="none">❓ Unknown</option>
       </select>
       <button type="submit">Add</button>
     </form>
 
     <ul style="list-style:none;padding:0;margin:0">
-      <li *ngFor="let p of profiles()" style="display:flex;justify-content:space-between;align-items:center;border:1px solid #eee;border-radius:8px;padding:10px;margin:8px 0">
+      <li *ngFor="let p of profiles()" 
+          [style.background]="p.handedness === 'right' ? '#e8f5e9' : p.handedness === 'left' ? '#e3f2fd' : '#fffde7'"
+          style="display:flex;justify-content:space-between;align-items:center;border:1.5px solid #bdbdbd;border-radius:8px;padding:10px;margin:8px 0;transition:background 0.2s;">
         <div>
-          <div style="font-weight:600">{{p.name}}</div>
+          <div style="font-weight:600;display:flex;align-items:center;gap:8px;color:#222;">
+            {{p.name}}
+            <span *ngIf="p.handedness" [style.color]="p.handedness === 'right' ? '#388e3c' : p.handedness === 'left' ? '#1976d2' : '#fbc02d'">
+              {{
+                p.handedness === 'right' ? '🖐️' :
+                p.handedness === 'left' ? '🤚' :
+                '🤲'
+              }}
+            </span>
+            <span *ngIf="p.eyeDominance" [style.color]="p.eyeDominance === 'right' ? '#2ecc40' : p.eyeDominance === 'left' ? '#3ea3ff' : '#bbb'">
+              {{p.eyeDominance === 'right' ? '👁️‍🗨️' : p.eyeDominance === 'left' ? '👁️' : '❓'}}
+            </span>
+          </div>
+          <div style="font-size:12px;color:#888;margin:2px 0 4px 0;">
+            <span *ngIf="p.bowType">
+              {{
+                p.bowType === 'recurve' ? '🏹 Recurve' :
+                p.bowType === 'compound' ? '⚙️ Compound' :
+                p.bowType === 'barebow' ? '🎯 Barebow' :
+                p.bowType === 'longbow' ? '🏰 Longbow' :
+                p.bowType
+              }}
+            </span>
+            <span *ngIf="p.handedness" style="margin-left:8px;">Hand: {{p.handedness}}</span>
+            <span *ngIf="p.eyeDominance" style="margin-left:8px;">Eye: {{p.eyeDominance}}</span>
+          </div>
           <div style="font-size:12px;color:#666;display:flex;align-items:center;gap:6px">
             Sessions: {{stats()[p.id]?.sessions || 0}} •
             Shots: {{stats()[p.id]?.shots || 0}} •
@@ -67,6 +110,8 @@ export class ProfilesComponent {
   profiles = signal<ArcherProfile[]>([]);
   name = '';
   bowType?: BowType;
+  handedness?: string;
+  eyeDominance?: string;
   bowTypes: BowType[] = ['recurve','compound','barebow','longbow'];
   stats = signal<Record<string, {sessions:number, shots:number, avgScore:number, biasDirection?: string}>>({});
   trendMap = signal<Record<string, { deltaPct: number } | null>>({});
@@ -87,11 +132,21 @@ export class ProfilesComponent {
   async create(e: Event) {
     e.preventDefault();
     const now = Date.now();
-    const p: ArcherProfile = { id: uuid(), name: this.name.trim(), bowType: this.bowType, createdAt: now, updatedAt: now };
+    const p: ArcherProfile = { 
+      id: uuid(), 
+      name: this.name.trim(), 
+      bowType: this.bowType, 
+      handedness: this.handedness,
+      eyeDominance: this.eyeDominance,
+      createdAt: now, 
+      updatedAt: now 
+    };
     await this.db.upsertProfile(p);
     this.profiles.set(await this.db.listProfiles());
     this.name = '';
     this.bowType = undefined;
+    this.handedness = undefined;
+    this.eyeDominance = undefined;
     await this.ngOnInit(); // reload stats and trends
   }
 

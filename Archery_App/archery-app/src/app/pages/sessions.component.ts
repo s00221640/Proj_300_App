@@ -12,6 +12,9 @@ import { FormsModule } from '@angular/forms';
   imports: [CommonModule, RouterModule, FormsModule],
   template: `
 <section style="max-width:900px;margin:16px auto;padding:12px">
+  <a [routerLink]="['/profiles']" style="display:inline-block;margin-bottom:16px;color:#1976d2;text-decoration:underline;font-weight:500;">
+    ← Back to Profiles
+  </a>
   <h2>Sessions</h2>
   <button (click)="openNewSessionDialog()" style="margin-bottom:16px">New Session</button>
   <div style="display: flex; flex-wrap: wrap; gap: 18px;">

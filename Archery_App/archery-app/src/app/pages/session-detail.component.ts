@@ -1,10 +1,11 @@
 import { Component, ElementRef, ViewChild, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router'; 
 import { ActivatedRoute } from '@angular/router';
 import { DbService } from '../services/db.services';
 import { MetricsService } from '../services/metrics.service';
-import { Metrics, SessionMeta, Shot, Calibration } from '../models'; // <-- add Calibration here
+import { Metrics, SessionMeta, Shot, Calibration } from '../models'; 
 import { v4 as uuid } from 'uuid';
 
 type Mode = 'calibrate-center' | 'calibrate-ring' | 'mark-shots';
@@ -12,9 +13,12 @@ type Mode = 'calibrate-center' | 'calibrate-ring' | 'mark-shots';
 @Component({
   selector: 'app-session-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterModule], //RouterModule
   template: `
   <section style="max-width:1000px;margin:16px auto;padding:12px;display:grid;gap:12px">
+    <a [routerLink]="['/profiles']" style="display:inline-block;margin-bottom:16px;color:#1976d2;text-decoration:underline;font-weight:500;">
+      ← Back to Profiles
+    </a>
     <header>
       <h2 style="margin:0">Session</h2>
       <div *ngIf="session() as s" style="color:#555">
@@ -487,13 +491,13 @@ hasRing()   { return (this.cal().ringRadiusPx ?? 0) > 0; }
       radii.push(bestR);
     }
 
-    // Return the median radius for robustness
+    //Return the median radius for robustness
     radii.sort((a, b) => a - b);
     return radii[Math.floor(radii.length / 2)];
   }
 
   private radialGradient(cx: number, cy: number, theta: number, r: number): number {
-    // sample luminance at r-1 and r+1 along theta
+    //sample luminance at r-1 and r+1 along theta
     const p1 = { x: cx + (r - 1) * Math.cos(theta), y: cy + (r - 1) * Math.sin(theta) };
     const p2 = { x: cx + (r + 1) * Math.cos(theta), y: cy + (r + 1) * Math.sin(theta) };
     const L1 = this.sampleLuma(p1.x, p1.y);
@@ -620,7 +624,7 @@ clearEnd(end: number) {
 }
 deleteEnd(end: number) {
   const keep = this.shots().filter(s => (s.endIndex ?? 0) !== end);
-  // Decrement endIndex for shots in higher ends
+  //endIndex for shots in higher ends
   for (const sh of keep) {
     if ((sh.endIndex ?? 0) > end) sh.endIndex = (sh.endIndex ?? 0) - 1;
   }

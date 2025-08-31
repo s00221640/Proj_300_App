@@ -7,6 +7,8 @@ export interface ArcherProfile {
   avatarUrl?: string;
   createdAt: number;
   updatedAt: number;
+  handedness?: string;
+  eyeDominance?: string;
 }
 
 export interface Calibration {
